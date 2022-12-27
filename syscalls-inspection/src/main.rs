@@ -3,7 +3,7 @@ use aya::programs::RawTracePoint;
 use aya_log::BpfLogger;
 use clap::Parser;
 use log::{info, warn};
-use tokio::signal;
+use tokio::{signal};
 
 #[derive(Debug, Parser)]
 struct Opt {
@@ -35,6 +35,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let program: &mut RawTracePoint = bpf.program_mut("syscalls_inspection").unwrap().try_into()?;
     program.load()?;
     program.attach("sys_enter")?;
+
+    // let mut perf_array = AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS")?)?;
+    // let mut pid_map: BpfHashMap<MapRefMut, u32, Filename> =
+    //     BpfHashMap::try_from(bpf.map_mut("PIDS").unwrap()).unwrap();
+
 
     info!("Waiting for Ctrl-C...");
     signal::ctrl_c().await?;
