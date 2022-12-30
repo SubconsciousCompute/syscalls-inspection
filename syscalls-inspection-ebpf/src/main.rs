@@ -6,19 +6,19 @@ use core::slice;
 use aya_bpf::{
     helpers::*,
     macros::{map, raw_tracepoint},
-    maps::{HashMap, PerfEventArray},
+    maps::{PerfEventArray},
     programs::{RawTracePointContext},
-    BpfContext,
+    BpfContext, 
 };
 use aya_log_ebpf::info;
 
-use syscalls_inspection_common::{Filename, SysCallLog};
+use syscalls_inspection_common::SysCallLog;
 
 #[map(name = "EVENTS")]
 static mut EVENTS: PerfEventArray<SysCallLog> = PerfEventArray::<SysCallLog>::with_max_entries(1024, 0);
 
-#[map(name = "PIDS")]
-static mut PIDS: HashMap<u32, Filename> = HashMap::with_max_entries(10240000, 0);
+// #[map(name = "PIDS")]
+// static mut PIDS: HashMap<u32, Filename> = HashMap::with_max_entries(10240000, 0);
 
 #[raw_tracepoint(name="syscalls_inspection")]
 pub fn syscalls_inspection(ctx: RawTracePointContext) -> u32 {
@@ -36,7 +36,8 @@ unsafe fn try_syscalls_inspection(ctx: RawTracePointContext) -> Result<u32, u32>
     let pid         = ctx.pid() as u64;
     let pname_bytes   = ctx.command().map_err(|e| e as u32)?;
     let pname      = core::str::from_utf8_unchecked(&pname_bytes[..]);
-
+    // convert args[0] to PtRegs
+    // let regs = PtRegs::new((args[0] as *mut pt_regs).arg(0).unwrap());
 
     let logs = SysCallLog {
         ts,

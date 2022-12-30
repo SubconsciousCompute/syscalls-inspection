@@ -9,14 +9,14 @@ pub struct SysCallLog {
     pub pname_bytes   : [u8; 16], // &str with Static lifetime
 }
 
-#[cfg(feature = "user")]
-unsafe impl aya::Pod for SysCallLog {}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct Filename {
-    pub filename: [u8; 127],
-    pub filename_len: u8,
-}
+// #[cfg(feature = "user")]
+// unsafe impl aya::Pod for SysCallLog {}
+// #[repr(C)]
+// #[derive(Copy, Clone)]
+// pub struct Filename {
+//     pub filename: [u8; 127],
+//     pub filename_len: u8,
+// }
 
-#[cfg(feature = "user")]
-unsafe impl aya::Pod for Filename {}
+// #[cfg(feature = "user")]
+// unsafe impl aya::Pod for Filename {}
