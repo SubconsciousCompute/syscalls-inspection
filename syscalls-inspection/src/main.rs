@@ -66,10 +66,13 @@ async fn main() -> Result<(), anyhow::Error> {
     });
     
     info!("Spawning Event Processing Thread");
+    // let (tx, mut rx) = crossbeam_channel::bounded(100);
     let (tx, mut rx) = mpsc::channel(100);
     task::spawn(async move {
-        while let Some((ts, syscall, pid)) = rx.recv().await {
+        while let Some((ts, syscall, pid, pname)) = rx.recv().await {
             let nsec = std::time::Duration::from(nix::time::clock_gettime(nix::time::ClockId::CLOCK_MONOTONIC).unwrap()).as_nanos() as u64;
+            // convert bytes to string
+            // let pname = unsafe {String::from_utf8_unchecked(pname_bytes[..].to_vec())};
             // let boot_time: Duration = std::time::Duration::from_nanos(nsec);
             // println!("nsec: {}, boot_time: {}", nsec, boot_time.as_nanos() as u64);
             // let timestamp = nsec - ts;
@@ -77,10 +80,11 @@ async fn main() -> Result<(), anyhow::Error> {
             let epoch_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("time went backwards").as_nanos() as u64;
             let syscall_timestamp = epoch_time - nsec + ts;
             println!(
-                "timestamp: {} syscall: {} pid: {}",
+                "timestamp: {} syscall: {} pid: {} process: {}",
                 syscall_timestamp / 1_000_000,
                 syscalls.get(&syscall).unwrap_or(&syscall.to_string()),
                 pid,
+                pname,
             );
         }
     });
@@ -100,7 +104,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 for buf in buffers.iter_mut().take(events.read) {
                     let ptr = buf.as_ptr() as *const SysCallLog;
                     let data = unsafe { ptr.read_unaligned() };
-                    results.push((data.ts, data.syscall, data.pid));
+                    let pname = unsafe {String::from_utf8_unchecked(data.pname_bytes[..].to_vec())};
+                    results.push((data.ts, data.syscall, data.pid, pname));
                 }
                 for res in results {
                     // println!("sending data");
