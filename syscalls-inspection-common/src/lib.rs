@@ -3,10 +3,10 @@
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct SysCallLog {
-    pub ts      : u64,
-    pub syscall : u64,
-    pub pid     : u64,
-    pub pname_bytes   : [u8; 16], // &str with Static lifetime
+    pub ts: u64,
+    pub syscall: u64,
+    pub pid: u64,
+    pub pname_bytes: [u8; 16], // &str with Static lifetime
 }
 
 // #[cfg(feature = "user")]

@@ -1,25 +1,18 @@
-use aya::{include_bytes_aligned,
-    maps::{perf::AsyncPerfEventArray},
-    util::online_cpus, Bpf};
 use aya::programs::RawTracePoint;
+use aya::{include_bytes_aligned, maps::perf::AsyncPerfEventArray, util::online_cpus, Bpf};
 use aya_log::BpfLogger;
 use clap::Parser;
 use log::{info, warn};
-use tokio::{signal, task, sync::mpsc};
+use tokio::{signal, sync::mpsc, task};
 
-use std::{
-    process::Command,
-    collections::HashMap,
-};
+use std::{collections::HashMap, process::Command};
 
-use regex::Regex;
 use bytes::BytesMut;
+use regex::Regex;
 use syscalls_inspection_common::SysCallLog;
 
 #[derive(Debug, Parser)]
-struct Opt {
-    
-}
+struct Opt {}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -63,21 +56,27 @@ async fn main() -> Result<(), anyhow::Error> {
         .map(|cap| (cap[1].parse::<u64>().unwrap(), cap[2].trim().to_string()))
         .for_each(|(k, v)| {
             syscalls.insert(k, v);
-    });
-    
+        });
+
     info!("Spawning Event Processing Thread");
     // let (tx, mut rx) = crossbeam_channel::bounded(100);
     let (tx, mut rx) = mpsc::channel(100);
     task::spawn(async move {
         while let Some((ts, syscall, pid, pname)) = rx.recv().await {
-            let nsec = std::time::Duration::from(nix::time::clock_gettime(nix::time::ClockId::CLOCK_MONOTONIC).unwrap()).as_nanos() as u64;
+            let nsec = std::time::Duration::from(
+                nix::time::clock_gettime(nix::time::ClockId::CLOCK_MONOTONIC).unwrap(),
+            )
+            .as_nanos() as u64;
             // convert bytes to string
             // let pname = unsafe {String::from_utf8_unchecked(pname_bytes[..].to_vec())};
             // let boot_time: Duration = std::time::Duration::from_nanos(nsec);
             // println!("nsec: {}, boot_time: {}", nsec, boot_time.as_nanos() as u64);
             // let timestamp = nsec - ts;
             // get unix timestamp
-            let epoch_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("time went backwards").as_nanos() as u64;
+            let epoch_time = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time went backwards")
+                .as_nanos() as u64;
             let syscall_timestamp = epoch_time - nsec + ts;
             println!(
                 "timestamp: {} syscall: {} pid: {} process: {}",
@@ -104,7 +103,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 for buf in buffers.iter_mut().take(events.read) {
                     let ptr = buf.as_ptr() as *const SysCallLog;
                     let data = unsafe { ptr.read_unaligned() };
-                    let pname = unsafe {String::from_utf8_unchecked(data.pname_bytes[..].to_vec())};
+                    let pname =
+                        unsafe { String::from_utf8_unchecked(data.pname_bytes[..].to_vec()) };
                     results.push((data.ts, data.syscall, data.pid, pname));
                 }
                 for res in results {
