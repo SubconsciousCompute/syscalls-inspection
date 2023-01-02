@@ -3,7 +3,7 @@ use aya::{include_bytes_aligned, maps::perf::AsyncPerfEventArray, util::online_c
 use aya_log::BpfLogger;
 use clap::Parser;
 use log::{info, warn};
-use tokio::{signal, sync::mpsc, task};
+use tokio::{signal, task};
 
 use std::{collections::HashMap, process::Command};
 
@@ -60,9 +60,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     info!("Spawning Event Processing Thread");
     // let (tx, mut rx) = crossbeam_channel::bounded(100);
-    let (tx, mut rx) = mpsc::channel(100);
+    let (tx, rx) = flume::bounded(100);
     task::spawn(async move {
-        while let Some((ts, syscall, pid, pname)) = rx.recv().await {
+        // while let Some((ts, syscall, pid, pname)) = rx.recv_async().await {
+        while let Ok((ts, syscall, pid, pname)) = rx.recv_async().await {
             let nsec = std::time::Duration::from(
                 nix::time::clock_gettime(nix::time::ClockId::CLOCK_MONOTONIC).unwrap(),
             )
@@ -109,7 +110,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 }
                 for res in results {
                     // println!("sending data");
-                    tx.send(res).await.unwrap();
+                    // tx.send(res).await.unwrap();
+                    tx.send_async(res).await.unwrap();
                 }
             }
         });

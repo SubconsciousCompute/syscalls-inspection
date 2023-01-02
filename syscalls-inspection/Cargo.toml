@@ -16,7 +16,7 @@ tokio = { version = "1.18", features = ["full"] }
 regex = "1.5"
 bytes = "1"
 nix = "0.26.1"
-crossbeam-channel = "0.5.6"
+flume = "0.10.14"
 
 [[bin]]
 name = "syscalls-inspection"
