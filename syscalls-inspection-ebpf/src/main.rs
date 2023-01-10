@@ -95,7 +95,6 @@ unsafe fn try_execve_args(ctx: &TracePointContext) -> Result<u32, i64> {
     
     let entry: ExecveArgs = ExecveArgs { exec, arg_buf: arg_buf };
     EXECVE_EVENTS.output(ctx, &entry, 0);
-
     Ok(0)
 }
 

@@ -36,21 +36,23 @@ async fn main() -> Result<(), anyhow::Error> {
         // This can happen if you remove all log statements from your eBPF program.
         warn!("failed to initialize eBPF logger: {}", e);
     }
+
+    // Creates a handler for the loads the program for tracing raw syscalls
     let program: &mut RawTracePoint = bpf.program_mut("syscalls_inspection").unwrap().try_into()?;
     program.load()?;
     program.attach("sys_enter")?;
     
+    // Creates a handler for the loads the program for tracing execve args
     let execve_args: &mut TracePoint = bpf.program_mut("execve_args").unwrap().try_into()?;
     execve_args.load()?;
     execve_args.attach("syscalls", "sys_enter_execve")?;
 
     let mut perf_array = AsyncPerfEventArray::try_from(bpf.map_mut("SYSCALL_EVENTS")?)?;
+    let mut execve_array = AsyncPerfEventArray::try_from(bpf.map_mut("EXECVE_EVENTS")?)?;
 
+    // the following section creates a map of available syscalls based on their IDs.
     let mut syscalls: HashMap<u64, String> = HashMap::new();
     let output = Command::new("ausyscall").arg("--dump").output()?;
-    // println!("status: {}", output.status);
-    // io::stdout().write_all(&output.stdout).unwrap();
-    // io::stderr().write_all(&output.stderr).unwrap();
     let pattern = Regex::new(r"([0-9]+)\t(.*)")?;
     String::from_utf8(output.stdout)?
         .lines()
@@ -65,21 +67,19 @@ async fn main() -> Result<(), anyhow::Error> {
     let (tx, mut rx) = mpsc::channel(100);
     task::spawn(async move {
         while let Some((ts, syscall, pid, pname)) = rx.recv().await {
+
+            // The following section converts the timestamp from the kernel to a timestamp
             let nsec = std::time::Duration::from(
                 nix::time::clock_gettime(nix::time::ClockId::CLOCK_MONOTONIC).unwrap(),
             )
             .as_nanos() as u64;
-            // convert bytes to string
-            // let pname = unsafe {String::from_utf8_unchecked(pname_bytes[..].to_vec())};
-            // let boot_time: Duration = std::time::Duration::from_nanos(nsec);
-            // println!("nsec: {}, boot_time: {}", nsec, boot_time.as_nanos() as u64);
-            // let timestamp = nsec - ts;
-            // get unix timestamp
             let epoch_time = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time went backwards")
                 .as_nanos() as u64;
             let syscall_timestamp = epoch_time - nsec + ts;
+
+
             println!(
                 "timestamp: {} syscall: {} pid: {} process: {}",
                 syscall_timestamp / 1_000_000,
@@ -93,21 +93,39 @@ async fn main() -> Result<(), anyhow::Error> {
     info!("Spawning eBPF Event Listener");
     for cpu_id in online_cpus()? {
         let mut buf = perf_array.open(cpu_id, None)?;
+        let mut arg_buf = execve_array.open(cpu_id, None)?;
         let tx = tx.clone();
+
         task::spawn(async move {
             let mut buffers = (0..10)
+                .map(|_| BytesMut::with_capacity(1024))
+                .collect::<Vec<_>>();
+            
+            let mut execve_buffers = (1..10)
                 .map(|_| BytesMut::with_capacity(1024))
                 .collect::<Vec<_>>();
 
             loop {
                 let events = buf.read_events(&mut buffers).await.unwrap();
+                // let execve_events = arg_buf.read_events(&mut execve_buffers).await.unwrap();
+
                 let mut results = vec![];
+                // create an optional results vector that can store two differen types of data
+
                 for buf in buffers.iter_mut().take(events.read) {
                     let ptr = buf.as_ptr() as *const SysCallLog;
                     let data = unsafe { ptr.read_unaligned() };
                     let pname =
-                        unsafe { String::from_utf8_unchecked(data.pname_bytes[..].to_vec()) };
+                    unsafe { String::from_utf8_unchecked(data.pname_bytes[..].to_vec()) };
                     results.push((data.ts, data.syscall, data.pid, pname));
+                    
+                // for arg in execve_buffers.iter_mut().take(execve_events.read) {
+                //     let ptr = arg.as_ptr() as *const ExecveArgs;
+                //     let data = unsafe { ptr.read_unaligned() };
+                //     let exec = unsafe { String::from_utf8_unchecked(data.exec[..].to_vec()) };
+                //     // results.push()
+                // }
+                
                 }
                 for res in results {
                     // println!("sending data");
