@@ -71,7 +71,6 @@ unsafe fn try_execve_args(ctx: &TracePointContext) -> Result<u32, i64> {
     for i in 0..10 {
         let arg_ptr = bpf_probe_read_user(argv.offset(i))?;
         if arg_ptr.is_null() {
-            bpf_printk!(b"NO ARGV BRO!");
             break;
         }
         argv_len += 1;
