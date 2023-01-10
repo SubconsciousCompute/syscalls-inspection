@@ -9,14 +9,15 @@ pub struct SysCallLog {
     pub pname_bytes: [u8; 16], // &str with Static lifetime
 }
 
-// #[cfg(feature = "user")]
-// unsafe impl aya::Pod for SysCallLog {}
-// #[repr(C)]
-// #[derive(Copy, Clone)]
-// pub struct Filename {
-//     pub filename: [u8; 127],
-//     pub filename_len: u8,
-// }
+#[cfg(feature = "user")]
+unsafe impl aya::Pod for SysCallLog {}
 
-// #[cfg(feature = "user")]
-// unsafe impl aya::Pod for Filename {}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct ExecveArgs {
+    pub exec: [u8; 16],
+    pub arg_buf: [[u8; 26]; 8],
+}
+
+#[cfg(feature = "user")]
+unsafe impl aya::Pod for ExecveArgs {}

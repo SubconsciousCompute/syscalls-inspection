@@ -1,4 +1,4 @@
-use aya::programs::RawTracePoint;
+use aya::programs::{RawTracePoint, TracePoint};
 use aya::{include_bytes_aligned, maps::perf::AsyncPerfEventArray, util::online_cpus, Bpf};
 use aya_log::BpfLogger;
 use clap::Parser;
@@ -39,10 +39,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let program: &mut RawTracePoint = bpf.program_mut("syscalls_inspection").unwrap().try_into()?;
     program.load()?;
     program.attach("sys_enter")?;
+    
+    let execve_args: &mut TracePoint = bpf.program_mut("execve_args").unwrap().try_into()?;
+    execve_args.load()?;
+    execve_args.attach("syscalls", "sys_enter_execve")?;
 
-    let mut perf_array = AsyncPerfEventArray::try_from(bpf.map_mut("EVENTS")?)?;
-    // let mut pid_map: BpfHashMap<MapRefMut, u32, Filename> =
-    //     BpfHashMap::try_from(bpf.map_mut("PIDS").unwrap()).unwrap();
+    let mut perf_array = AsyncPerfEventArray::try_from(bpf.map_mut("SYSCALL_EVENTS")?)?;
 
     let mut syscalls: HashMap<u64, String> = HashMap::new();
     let output = Command::new("ausyscall").arg("--dump").output()?;
