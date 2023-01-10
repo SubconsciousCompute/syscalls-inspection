@@ -16,7 +16,8 @@ unsafe impl aya::Pod for SysCallLog {}
 #[derive(Copy, Clone)]
 pub struct ExecveArgs {
     pub exec: [u8; 16],
-    pub arg_buf: [[u8; 26]; 8],
+    pub exec_comm: [u8; 32],
+    pub arg_buf: [[u8; 16]; 7],
 }
 
 #[cfg(feature = "user")]

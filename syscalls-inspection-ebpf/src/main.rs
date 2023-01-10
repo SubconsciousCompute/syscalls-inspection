@@ -63,36 +63,41 @@ unsafe fn try_syscalls_inspection(ctx: RawTracePointContext) -> Result<u32, u32>
 
 unsafe fn try_execve_args(ctx: &TracePointContext) -> Result<u32, i64> {
     // info!(ctx, "hello");
+    let mut exec_buf = [0u8; 32];
     let exec = bpf_get_current_comm()?;
     let exec_comm = ctx.read_at::<*const u8>(16)?;
+    _ = bpf_probe_read_user_str_bytes(exec_comm, &mut exec_buf);
     let argv = ctx.read_at::<*const *const u8>(24)?;
     // calculate the length of argv
     let mut argv_len = 0;
-    for i in 0..10 {
+    'outer: for i in 0..10 {
         let arg_ptr = bpf_probe_read_user(argv.offset(i))?;
         if arg_ptr.is_null() {
-            break;
+            // bpf_printk!(b"NO ARGV BRO!");
+            break 'outer;
+            // return Ok(0);
         }
         argv_len += 1;
     }
 
     // create an array of array of 10 32b
-    let mut arg_buf = [[0u8; 26]; 8];
-    for i in 0..argv_len {
+    let mut arg_buf = [[0u8; 16]; 7];
+    for i in 1..argv_len {
         let arg_ptr = bpf_probe_read_user(argv.offset(i))?;
         if arg_ptr.is_null() {
-            return Ok(0);
+            break;
+            // return Ok(0);
         }
-        bpf_probe_read_user_str_bytes(arg_ptr, &mut arg_buf[i as usize]).unwrap_or_default();
+        bpf_probe_read_user_str_bytes(arg_ptr, &mut arg_buf[i as usize - 1 as usize]).unwrap_or_default();
         // bpf_probe_read_user_str(arg_ptr, &mut arg_buf[i])?;
         // bpf_printk!(b"hahahaha: %s", arg_ptr);
     }
 
 
-    bpf_printk!(b"argv_len: %d", argv_len);
-    bpf_printk!(b"exec: %s, exec_comm: %s arg1: %s, arg2: %s, arg3: %s, arg4: %s, arg5: %s, arg6: %s", exec.as_ptr(), exec_comm, arg_buf[1].as_ptr(), arg_buf[2].as_ptr(), arg_buf[3].as_ptr(), arg_buf[4].as_ptr(), arg_buf[5].as_ptr(), arg_buf[6].as_ptr() );
+    // bpf_printk!(b"argv_len: %d", argv_len);
+    // bpf_printk!(b"exec: %s, exec_comm: %s arg1: %s, arg2: %s, arg3: %s, arg4: %s, arg5: %s, arg6: %s", exec.as_ptr(), exec_comm, arg_buf[1].as_ptr(), arg_buf[2].as_ptr(), arg_buf[3].as_ptr(), arg_buf[4].as_ptr(), arg_buf[5].as_ptr(), arg_buf[6].as_ptr() );
     
-    let entry: ExecveArgs = ExecveArgs { exec, arg_buf: arg_buf };
+    let entry: ExecveArgs = ExecveArgs { exec, exec_comm: exec_buf, arg_buf: arg_buf };
     EXECVE_EVENTS.output(ctx, &entry, 0);
     Ok(0)
 }
