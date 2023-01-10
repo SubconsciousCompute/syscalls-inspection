@@ -87,13 +87,15 @@ async fn main() -> Result<(), anyhow::Error> {
                 pid,
                 pname,
             );
+
+            // send the data to a socket
         }
     });
 
     info!("Spawning eBPF Event Listener");
     for cpu_id in online_cpus()? {
         let mut buf = perf_array.open(cpu_id, None)?;
-        let mut arg_buf = execve_array.open(cpu_id, None)?;
+        // let mut arg_buf = execve_array.open(cpu_id, None)?;
         let tx = tx.clone();
 
         task::spawn(async move {
@@ -101,9 +103,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 .map(|_| BytesMut::with_capacity(1024))
                 .collect::<Vec<_>>();
             
-            let mut execve_buffers = (1..10)
-                .map(|_| BytesMut::with_capacity(1024))
-                .collect::<Vec<_>>();
+            // let mut execve_buffers = (1..10)
+            //     .map(|_| BytesMut::with_capacity(1024))
+            //     .collect::<Vec<_>>();
 
             loop {
                 let events = buf.read_events(&mut buffers).await.unwrap();
