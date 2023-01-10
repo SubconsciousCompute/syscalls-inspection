@@ -12,7 +12,10 @@
 cargo xtask build-ebpf
 ```
 
-To perform a release build you can use the `--release` flag.
+To perform a release build you can use
+```bash
+cargo xtask build-ebpf --release && cargo build --release
+```
 You may also change the target architecture with the `--target` flag
 
 ## Build Userspace
