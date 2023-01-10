@@ -19,6 +19,7 @@ enum Command {
 
 fn main() {
     let opts = Options::parse();
+    // println!("{:?}", opts);
 
     use Command::*;
     let ret = match opts.command {

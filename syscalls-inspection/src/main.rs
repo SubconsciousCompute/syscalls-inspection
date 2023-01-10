@@ -6,18 +6,50 @@ use log::{info, warn};
 use tokio::{signal, sync::mpsc, task};
 
 use std::vec;
+use std::net::UdpSocket;
 use std::{collections::HashMap, process::Command};
 
-use bytes::BytesMut;
 use regex::Regex;
+use bytes::BytesMut;
+// use serde::Serialize;
 use syscalls_inspection_common::{SysCallLog, ExecveArgs};
 
 #[derive(Debug, Parser)]
-struct Opt {}
+struct Opt {
+    #[clap(long, default_value = "both")]
+    pub mode: String,
+
+    // Run with socket
+    #[clap(long, default_value = "both")]
+    pub features: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct AllSysCalls{
+    timestamp: u64,
+    syscall: String,
+    pid: u64,
+    pname: String,
+}
+
+// derive debug and serizalize for the struct
+#[derive(Debug, serde::Serialize)]
+struct ExecveStrings {
+    exec: String,
+    exec_comm: String,
+    arg0: String,
+    arg1: String,
+    arg2: String,
+    arg3: String,
+    arg4: String,
+    arg5: String,
+    arg6: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let _opt = Opt::parse();
+    let opt = Opt::parse();
+    println!("{:?}", opt);
 
     env_logger::init();
 
@@ -68,15 +100,50 @@ async fn main() -> Result<(), anyhow::Error> {
     let (tx, mut rx) = mpsc::channel(100);
     let (tx_execve, mut rx_execve) = mpsc::channel(100);
 
+    let execve_mode = opt.mode.clone();
+    let execve_features = opt.features.clone();
     task::spawn(async move {
         while let Some((exec, exec_comm, arg0, arg1, arg2, arg3, arg4, arg5, arg6)) = rx_execve.recv().await {
-            println!(
-                "execve: {} exec_comm: {} arg0: {} arg1: {} arg2: {} arg3: {} arg4: {} arg5: {} arg6: {} ",
-                exec, exec_comm, arg0, arg1, arg2, arg3, arg4, arg5, arg6
-            );
+            let execve: ExecveStrings = ExecveStrings {
+                    exec: exec,
+                    exec_comm: exec_comm,
+                    arg0: arg0,
+                    arg1: arg1,
+                    arg2: arg2,
+                    arg3: arg3,
+                    arg4: arg4,
+                    arg5: arg5,
+                    arg6: arg6,
+                };
+
+            if &execve_mode.clone() == &"execve".to_string() || &execve_mode.clone() == &"both".to_string() {  
+                if &execve_features.clone() == &"all".to_string() || &execve_features == &"socket".to_string(){
+                    let socket = UdpSocket::bind("127.0.0.1:32524");
+                    let socket = match socket {
+                        Ok(s) => s,
+                        Err(e) => {
+                            println!("couldn't bind to address: {}", e);
+                            return;
+                        }
+                    };
+                    let execve_json = serde_json::to_string(&execve).unwrap();
+                    let execve_json = execve_json.as_bytes();
+                    _ = socket.send_to(execve_json, "127.0.0.1:32525");
+                } else {
+
+                    // println!(
+                    //     "execve: {} exec_comm: {} arg0: {} arg1: {} arg2: {} arg3: {} arg4: {} arg5: {} arg6: {} ",
+                    //     exec, exec_comm, arg0, arg1, arg2, arg3, arg4, arg5, arg6
+                    // );
+                    println!("{:?}", execve);
+                }
+            }
         }
+    
     });
 
+    let syscalls_mode = opt.mode.clone();
+    let syscalls_features = opt.features.clone();
     task::spawn(async move {
         while let Some((ts, syscall, pid, pname)) = rx.recv().await {
 
@@ -91,19 +158,39 @@ async fn main() -> Result<(), anyhow::Error> {
                 .as_nanos() as u64;
             let syscall_timestamp = epoch_time - nsec + ts;
 
+            let all_syscalls: AllSysCalls = AllSysCalls{
+                timestamp: syscall_timestamp / 1_000_000,
+                syscall: syscalls.get(&syscall).unwrap_or(&syscall.to_string()).clone(),
+                pid: pid,
+                pname: pname,
+            };
 
-            // if syscalls.get(&syscall).unwrap_or(&syscall.to_string()) == &"execve".to_string(){
+            if &syscalls_mode.clone() == &"syscalls".to_string() || &syscalls_mode.clone() == &"both".to_string() {     
+                if &syscalls_features.clone() == &"all".to_string() || &syscalls_features == &"socket".to_string(){
+                    let socket = UdpSocket::bind("127.0.0.1:32526");
+                    let socket = match socket {
+                        Ok(s) => s,
+                        Err(e) => {
+                            println!("couldn't bind to address: {}", e);
+                            return;
+                        }
+                    };
+                    let all_syscalls_json = serde_json::to_string(&all_syscalls).unwrap();
+                    let all_syscalls_json = all_syscalls_json.as_bytes();
+                    _ = socket.send_to(all_syscalls_json, "127.0.0.1:32525")
+                } else {
+                    // println!(
+                    //     "timestamp: {} syscall: {} pid: {} process: {}",
+                    //     syscall_timestamp / 1_000_000,
+                    //     syscalls.get(&syscall).unwrap_or(&syscall.to_string()),
+                    //     pid,
+                    //     pname,
+                    // );
+                    println!("{:?}", all_syscalls);
+                }        
+            }
 
-            println!(
-                "timestamp: {} syscall: {} pid: {} process: {}",
-                syscall_timestamp / 1_000_000,
-                syscalls.get(&syscall).unwrap_or(&syscall.to_string()),
-                pid,
-                pname,
-            );
-            // }
 
-            // send the data to a socket
         }
     });
 
@@ -125,21 +212,21 @@ async fn main() -> Result<(), anyhow::Error> {
                     // let events = buf.read_events(&mut buffers).await.unwrap();
                     let execve_events = arg_buf.read_events(&mut execve_buffers).await.unwrap();
     
-                    let mut results = vec![];
+                    let mut results: Vec<(String, String, String, String, String, String, String, String, String)> = vec![];
 
                             
                     for arg in execve_buffers.iter_mut().take(execve_events.read) {
                         let ptr = arg.as_ptr() as *const ExecveArgs;
                         let data = unsafe { ptr.read_unaligned() };
-                        let exec = unsafe { String::from_utf8_unchecked(data.exec[..].to_vec()) };
-                        let exec_comm = unsafe { String::from_utf8_unchecked(data.exec_comm[..].to_vec())};
-                        let arg0 = unsafe { String::from_utf8_unchecked(data.arg_buf[0].to_vec())};
-                        let arg1 = unsafe { String::from_utf8_unchecked(data.arg_buf[1].to_vec())};
-                        let arg2 = unsafe { String::from_utf8_unchecked(data.arg_buf[2].to_vec())};
-                        let arg3 = unsafe { String::from_utf8_unchecked(data.arg_buf[3].to_vec())};
-                        let arg4 = unsafe { String::from_utf8_unchecked(data.arg_buf[4].to_vec())};
-                        let arg5 = unsafe { String::from_utf8_unchecked(data.arg_buf[5].to_vec())};
-                        let arg6 = unsafe { String::from_utf8_unchecked(data.arg_buf[6].to_vec())};
+                        let exec: String= unsafe { String::from_utf8_unchecked(data.exec[..].to_vec()).replace("\0", "") };
+                        let exec_comm = unsafe { String::from_utf8_unchecked(data.exec_comm[..].to_vec()).replace("\0", "")};
+                        let arg0 = unsafe { String::from_utf8_unchecked(data.arg_buf[0].to_vec()).replace("\0", "")};
+                        let arg1 = unsafe { String::from_utf8_unchecked(data.arg_buf[1].to_vec()).replace("\0", "")};
+                        let arg2 = unsafe { String::from_utf8_unchecked(data.arg_buf[2].to_vec()).replace("\0", "")};
+                        let arg3 = unsafe { String::from_utf8_unchecked(data.arg_buf[3].to_vec()).replace("\0", "")};
+                        let arg4 = unsafe { String::from_utf8_unchecked(data.arg_buf[4].to_vec()).replace("\0", "")};
+                        let arg5 = unsafe { String::from_utf8_unchecked(data.arg_buf[5].to_vec()).replace("\0", "")};
+                        let arg6 = unsafe { String::from_utf8_unchecked(data.arg_buf[6].to_vec()).replace("\0", "")};
                         // let arg7 = unsafe { String::from_utf8_unchecked(data.arg_buf[7].to_vec())};
                         // results.push()
                         // results.push((exec, arg0, )
@@ -171,6 +258,8 @@ async fn main() -> Result<(), anyhow::Error> {
                     let data = unsafe { ptr.read_unaligned() };
                     let pname =
                     unsafe { String::from_utf8_unchecked(data.pname_bytes[..].to_vec()) };
+                    // remove unicode null characters from pname
+                    let pname = pname.replace("\0", "");
                     results.push((data.ts, data.syscall, data.pid, pname));
                     // results.push(Result_Type::SysCallLog(vec![(data.ts, data.syscall, data.pid, pname)]));
                     
