@@ -11,6 +11,8 @@ syscalls-inspection-common = { path = "../syscalls-inspection-common" }
 [[bin]]
 name = "syscalls-inspection"
 path = "src/main.rs"
+bench = false
+test = false
 
 [profile.dev]
 opt-level = 3
